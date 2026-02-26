@@ -1,0 +1,197 @@
+import java.io.*;
+import java.util.*;
+
+//========================================================
+// Motorcycle Model
+//========================================================
+class Motorcycle {
+    int id;
+    String brand;
+    String model;
+    int quantity;
+    double price;
+
+    public Motorcycle(int id, String brand, String model, int quantity, double price) {
+        this.id = id;
+        this.brand = brand;
+        this.model = model;
+        this.quantity = quantity;
+        this.price = price;
+    }
+}
+
+//========================================================
+// BST Node (Grouped by Brand)
+//========================================================
+class BrandNode {
+    String brand;
+    List<Motorcycle> motorcycles = new ArrayList<>();
+    BrandNode left, right;
+
+    public BrandNode(String brand) {
+        this.brand = brand;
+    }
+}
+
+//========================================================
+// Binary Search Tree (Brand-Based)
+//========================================================
+class BrandBST {
+
+    // Insert motorcycle by brand
+    public BrandNode insert(BrandNode root, Motorcycle bike) {
+        if (root == null) {
+            BrandNode node = new BrandNode(bike.brand);
+            node.motorcycles.add(bike);
+            return node;
+        }
+
+        int cmp = bike.brand.compareToIgnoreCase(root.brand);
+
+        if (cmp < 0) {
+            root.left = insert(root.left, bike);
+        } else if (cmp > 0) {
+            root.right = insert(root.right, bike);
+        } else {
+            root.motorcycles.add(bike);
+        }
+
+        return root;
+    }
+
+    // Display all brands alphabetically
+    public void inOrder(BrandNode node) {
+        if (node == null) return;
+
+        inOrder(node.left);
+
+        System.out.println("Brand: " + node.brand);
+        for (Motorcycle m : node.motorcycles) {
+            System.out.println(" - " + m.model + " (" + m.quantity + " in stock)");
+        }
+
+        inOrder(node.right);
+    }
+
+    // Generate full inventory report
+    public void report(BrandNode node, double[] totalValue) {
+        if (node == null) return;
+
+        report(node.left, totalValue);
+
+        for (Motorcycle m : node.motorcycles) {
+            System.out.println(m.id + " " + m.brand + " " + m.model + " "
+                    + m.quantity + " $" + m.price);
+            totalValue[0] += m.quantity * m.price;
+        }
+
+        report(node.right, totalValue);
+    }
+}
+
+//========================================================
+// Main Program
+//========================================================
+public class InventorySystem {
+
+    static HashMap<Integer, Motorcycle> hashMap_inventory = new HashMap<>();
+    static BrandBST bst = new BrandBST();
+    static BrandNode bstRoot = null;
+
+    public static void main(String[] args) {
+
+        // Sample inventory
+        Motorcycle[] items = {
+            new Motorcycle(101, "Harley",   "Street Glide", 8, 21999),
+            new Motorcycle(102, "Yamaha",   "R1",           6, 17999),
+            new Motorcycle(103, "Honda",    "CBR600",      12, 11999),
+            new Motorcycle(104, "Kawasaki", "Ninja",        7, 16999),
+            new Motorcycle(105, "BMW",      "S1000RR",      4, 18999),
+            new Motorcycle(106, "Honda",    "Gold Wing",    3, 23999),
+            new Motorcycle(107, "Yamaha",   "MT-09",        5, 9999)
+        };
+
+        // Load sample items into HashMap & BST
+        for (Motorcycle m : items) {
+            hashMap_inventory.put(m.id, m);
+            bstRoot = bst.insert(bstRoot, m);
+        }
+
+        Scanner sc = new Scanner(System.in);
+        int choice = 0;
+
+        // Menu loop
+        while (choice != 4) {
+
+            System.out.println("\n=== MOTORCYCLE INVENTORY MENU ===");
+            System.out.println("1. Search by ID");
+            System.out.println("2. View All Brands");
+            System.out.println("3. Generate Report");
+            System.out.println("4. Exit");
+            System.out.print("Enter choice: ");
+
+            choice = sc.nextInt();
+
+            switch (choice) {
+                case 1 -> searchByID(sc);
+                case 2 -> bst.inOrder(bstRoot);
+                case 3 -> generateReport();
+                case 4 -> {
+                    saveToCSV();
+                    System.out.println("System shutdown complete.");
+                }
+                default -> System.out.println("Invalid choice.");
+            }
+        }
+
+        sc.close();
+    }
+
+    // Search inventory by ID using HashMap
+    static void searchByID(Scanner sc) {
+        System.out.print("Enter Motorcycle ID: ");
+        int id = sc.nextInt();
+
+        if (hashMap_inventory.containsKey(id)) {
+            Motorcycle m = hashMap_inventory.get(id);
+            System.out.println("ID: " + m.id);
+            System.out.println("Brand: " + m.brand);
+            System.out.println("Model: " + m.model);
+            System.out.println("Quantity: " + m.quantity);
+            System.out.println("Price: $" + m.price);
+        } else {
+            System.out.println("Motorcycle ID not found.");
+        }
+    }
+
+    // Inventory report with total value
+    static void generateReport() {
+        System.out.println("\n=== INVENTORY REPORT ===");
+        System.out.println("ID Brand Model Qty Price");
+        System.out.println("-------------------------------------");
+
+        double[] total = {0};
+        bst.report(bstRoot, total);
+
+        System.out.println("-------------------------------------");
+        System.out.println("Total Inventory Value: $" + total[0]);
+    }
+
+    // Save inventory to CSV file
+    static void saveToCSV() {
+        try (FileWriter fw = new FileWriter("motorcycle_inventory.csv")) {
+
+            fw.write("ID,BRAND,MODEL,QUANTITY,PRICE\n");
+
+            for (Motorcycle m : hashMap_inventory.values()) {
+                fw.write(m.id + "," + m.brand + "," + m.model + "," +
+                        m.quantity + "," + m.price + "\n");
+            }
+
+            System.out.println("Inventory saved to motorcycle_inventory.csv");
+
+        } catch (IOException e) {
+            System.out.println("Error saving CSV: " + e.getMessage());
+        }
+    }
+}
