@@ -1,0 +1,161 @@
+START PROGRAM
+
+----------------------------------------------------
+STEP 1: INITIALIZE DATA STRUCTURES
+----------------------------------------------------
+CREATE hashMap_inventory        // Key: Motorcycle ID
+CREATE bst_inventory            // Key: Brand Name
+
+
+----------------------------------------------------
+STEP 2: LOAD INVENTORY FROM CSV
+----------------------------------------------------
+OPEN "motorcycle_inventory.csv"
+READ all motorcycle records
+
+FOR EACH motorcycle:
+    ADD to hashMap_inventory (Key = motorcycle.id)
+    INSERT into bst_inventory (Key = motorcycle.brand)
+END FOR
+
+CLOSE file
+
+
+----------------------------------------------------
+STEP 3: SAMPLE MOTORCYCLES TO ADD
+----------------------------------------------------
+motorcycle1 = (101, "Harley",   "Street Glide", 8, 21999)
+motorcycle2 = (102, "Yamaha",   "R1",           6, 17999)
+motorcycle3 = (103, "Honda",    "CBR600",      12, 11999)
+motorcycle4 = (104, "Kawasaki", "Ninja",        7, 16999)
+motorcycle5 = (105, "BMW",      "S1000RR",      4, 18999)
+motorcycle6 = (106, "Honda",    "Gold Wing",    3, 23999)
+motorcycle7 = (107, "Yamaha",   "MT-09",        5, 9999)
+
+
+----------------------------------------------------
+STEP 4: UPDATE HASHMAP BY ITEM ID
+----------------------------------------------------
+hashMap_inventory[101] = motorcycle1
+hashMap_inventory[102] = motorcycle2
+hashMap_inventory[103] = motorcycle3
+hashMap_inventory[104] = motorcycle4
+hashMap_inventory[105] = motorcycle5
+hashMap_inventory[106] = motorcycle6
+hashMap_inventory[107] = motorcycle7
+
+
+----------------------------------------------------
+STEP 5: INSERT ITEMS INTO BST (BY BRAND)
+----------------------------------------------------
+INSERT motorcycle1
+INSERT motorcycle2
+INSERT motorcycle3
+INSERT motorcycle4
+INSERT motorcycle5
+INSERT motorcycle6
+INSERT motorcycle7
+
+
+----------------------------------------------------
+STEP 6: USER MENU
+----------------------------------------------------
+DISPLAY "=== MOTORCYCLE INVENTORY MENU ==="
+DISPLAY "1. Search by ID"
+DISPLAY "2. View All Brands"
+DISPLAY "3. Generate Report"
+DISPLAY "4. Exit"
+
+GET user_choice
+
+
+----------------------------------------------------
+STEP 7: HANDLE USER SELECTION
+----------------------------------------------------
+IF user_choice = 1 THEN
+    GO TO Search_By_ID
+ELSE IF user_choice = 2 THEN
+    GO TO View_Brands
+ELSE IF user_choice = 3 THEN
+    GO TO Generate_Report
+ELSE
+    GO TO Save_And_Exit
+END IF
+
+
+----------------------------------------------------
+Search_By_ID:
+----------------------------------------------------
+PROMPT "Enter Motorcycle ID: "
+GET search_id
+
+IF hashMap_inventory CONTAINS search_id THEN
+    bike = hashMap_inventory[search_id]
+    DISPLAY bike details
+ELSE
+    DISPLAY "ID not found"
+END IF
+
+GO TO STEP 6
+
+
+----------------------------------------------------
+View_Brands:
+----------------------------------------------------
+CALL InOrder_Traversal(bst_inventory)
+GO TO STEP 6
+
+PROCEDURE InOrder_Traversal(node):
+    IF node = NULL THEN RETURN
+    InOrder_Traversal(node.left)
+    DISPLAY "Brand: " + node.brand
+    FOR EACH bike IN node.motorcycle_list:
+        DISPLAY " - " + bike.model + " (" + bike.quantity + " in stock)"
+    END FOR
+    InOrder_Traversal(node.right)
+END PROCEDURE
+
+
+----------------------------------------------------
+Generate_Report:
+----------------------------------------------------
+DISPLAY "=== INVENTORY REPORT ==="
+DISPLAY "ID Brand Model Qty Price"
+DISPLAY "-------------------------------------"
+
+total_value = 0
+CALL Report_From_BST(bst_inventory, total_value)
+
+DISPLAY "-------------------------------------"
+DISPLAY "Total Inventory Value: $" + total_value
+
+GO TO STEP 6
+
+PROCEDURE Report_From_BST(node, total_value):
+    IF node = NULL THEN RETURN
+    Report_From_BST(node.left, total_value)
+    FOR EACH bike IN node.motorcycle_list:
+        DISPLAY bike details
+        total_value = total_value + (bike.quantity * bike.price)
+    END FOR
+    Report_From_BST(node.right, total_value)
+END PROCEDURE
+
+
+----------------------------------------------------
+Save_And_Exit:
+----------------------------------------------------
+OPEN "motorcycle_inventory.csv" FOR WRITING
+WRITE "ID,BRAND,MODEL,QUANTITY,PRICE"
+
+FOR EACH key IN hashMap_inventory:
+    WRITE motorcycle record
+END FOR
+
+CLOSE file
+DISPLAY "Inventory saved."
+
+
+----------------------------------------------------
+END PROGRAM
+----------------------------------------------------
