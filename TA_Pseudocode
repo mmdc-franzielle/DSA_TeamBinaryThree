@@ -1,161 +1,545 @@
-START PROGRAM
+// =====================================================================
+// INITIALIZATION - CREATE DATA STRUCTURES
+// =====================================================================
+CREATE hashMap_inventory    // For O(1) lookups by motorcycle ID
+CREATE bst_inventory        // For sorted storage by brand name
+CREATE transaction_queue     // For FIFO transaction processing
+CREATE undo_stack           // For LIFO undo operations
 
-----------------------------------------------------
-STEP 1: INITIALIZE DATA STRUCTURES
-----------------------------------------------------
-CREATE hashMap_inventory        // Key: Motorcycle ID
-CREATE bst_inventory            // Key: Brand Name
+// =====================================================================
+// STRUCTURE DEFINITIONS
+// =====================================================================
+STRUCTURE Motorcycle:
+    id: INTEGER
+    brand: STRING
+    model: STRING
+    quantity: INTEGER
+    price: FLOAT
+END STRUCTURE
 
+STRUCTURE BST_Node:
+    brand: STRING                    // Key for BST
+    motorcycle_list: LIST             // Multiple motorcycles of same brand
+    left: POINTER TO BST_Node         // Left child (smaller brand)
+    right: POINTER TO BST_Node        // Right child (larger brand)
+END STRUCTURE
 
-----------------------------------------------------
-STEP 2: LOAD INVENTORY FROM CSV
-----------------------------------------------------
-OPEN "motorcycle_inventory.csv"
-READ all motorcycle records
+STRUCTURE Transaction:
+    id: INTEGER                       // Motorcycle ID
+    change: INTEGER                    // Quantity change (+ or -)
+END STRUCTURE
 
-FOR EACH motorcycle:
-    ADD to hashMap_inventory (Key = motorcycle.id)
-    INSERT into bst_inventory (Key = motorcycle.brand)
+STRUCTURE UndoRecord:
+    id: INTEGER                        // Motorcycle ID
+    undo_amount: INTEGER                // Opposite of transaction change
+END STRUCTURE
+
+// =====================================================================
+// BST INSERTION FUNCTION
+// =====================================================================
+FUNCTION Insert_Into_BST(node, motorcycle):
+    IF node = NULL THEN
+        CREATE new_node AS BST_Node
+        new_node.brand = motorcycle.brand
+        new_node.motorcycle_list = [motorcycle]
+        new_node.left = NULL
+        new_node.right = NULL
+        RETURN new_node
+    END IF
+    
+    IF motorcycle.brand = node.brand THEN
+        ADD motorcycle TO node.motorcycle_list
+    ELSE IF motorcycle.brand < node.brand THEN
+        node.left = Insert_Into_BST(node.left, motorcycle)
+    ELSE
+        node.right = Insert_Into_BST(node.right, motorcycle)
+    END IF
+    
+    RETURN node
+END FUNCTION
+
+// =====================================================================
+// MERGE SORT FUNCTIONS (Used in Generate Report)
+// =====================================================================
+
+// Merge two sorted halves of a motorcycle list (sorted by brand, then model)
+FUNCTION Merge(left_list, right_list):
+    CREATE result_list AS empty LIST
+    i = 0
+    j = 0
+
+    WHILE i < LENGTH(left_list) AND j < LENGTH(right_list) DO
+        // Compare by brand first, then by model if same brand
+        IF left_list[i].brand < right_list[j].brand THEN
+            ADD left_list[i] TO result_list
+            i = i + 1
+        ELSE IF left_list[i].brand > right_list[j].brand THEN
+            ADD right_list[j] TO result_list
+            j = j + 1
+        ELSE
+            // Same brand — sort by model name
+            IF left_list[i].model <= right_list[j].model THEN
+                ADD left_list[i] TO result_list
+                i = i + 1
+            ELSE
+                ADD right_list[j] TO result_list
+                j = j + 1
+            END IF
+        END IF
+    END WHILE
+
+    // Append remaining elements
+    WHILE i < LENGTH(left_list) DO
+        ADD left_list[i] TO result_list
+        i = i + 1
+    END WHILE
+
+    WHILE j < LENGTH(right_list) DO
+        ADD right_list[j] TO result_list
+        j = j + 1
+    END WHILE
+
+    RETURN result_list
+END FUNCTION
+
+// Recursively split and sort the motorcycle list
+FUNCTION Merge_Sort(bike_list):
+    IF LENGTH(bike_list) <= 1 THEN
+        RETURN bike_list
+    END IF
+
+    mid = LENGTH(bike_list) / 2
+
+    left_half  = bike_list[0 .. mid - 1]
+    right_half = bike_list[mid .. LENGTH(bike_list) - 1]
+
+    left_sorted  = Merge_Sort(left_half)
+    right_sorted = Merge_Sort(right_half)
+
+    RETURN Merge(left_sorted, right_sorted)
+END FUNCTION
+
+// Helper: Flatten all motorcycles from BST into a single list
+FUNCTION Flatten_BST(node, flat_list):
+    IF node = NULL THEN
+        RETURN
+    END IF
+
+    Flatten_BST(node.left, flat_list)
+
+    FOR EACH bike IN node.motorcycle_list DO
+        ADD bike TO flat_list
+    END FOR
+
+    Flatten_BST(node.right, flat_list)
+END FUNCTION
+
+// =====================================================================
+// ADD MOTORCYCLES TO INVENTORY
+// =====================================================================
+PRINT "Loading 7 motorcycles into inventory..."
+
+// Create list of 7 motorcycles with different brands
+motorcycles = [
+    (101, "Harley",   "Street Glide", 8, 21999),
+    (102, "Yamaha",   "R1",           6, 17999),
+    (103, "Honda",    "CBR600",      12, 11999),
+    (104, "Kawasaki", "Ninja",        7, 16999),
+    (105, "BMW",      "S1000RR",      4, 18999),
+    (106, "Honda",    "Gold Wing",    3, 23999),
+    (107, "Yamaha",   "MT-09",        5,  9999)
+]
+
+// Add to HashMap (key = ID)
+FOR EACH bike IN motorcycles:
+    CREATE new_motorcycle AS Motorcycle
+    new_motorcycle.id       = bike[0]
+    new_motorcycle.brand    = bike[1]
+    new_motorcycle.model    = bike[2]
+    new_motorcycle.quantity = bike[3]
+    new_motorcycle.price    = bike[4]
+    
+    hashMap_inventory[new_motorcycle.id] = new_motorcycle
 END FOR
 
-CLOSE file
+// Add to BST (key = brand)
+bst_inventory = NULL
+FOR EACH bike IN motorcycles:
+    CREATE new_motorcycle AS Motorcycle
+    new_motorcycle.id       = bike[0]
+    new_motorcycle.brand    = bike[1]
+    new_motorcycle.model    = bike[2]
+    new_motorcycle.quantity = bike[3]
+    new_motorcycle.price    = bike[4]
+    
+    bst_inventory = Insert_Into_BST(bst_inventory, new_motorcycle)
+END FOR
 
+PRINT "✓ Added 7 motorcycles to inventory"
+PRINT "  HashMap: 7 items (key = ID)"
+PRINT "  BST: 5 brand nodes (Harley, Yamaha, Honda, Kawasaki, BMW)"
 
-----------------------------------------------------
-STEP 3: SAMPLE MOTORCYCLES TO ADD
-----------------------------------------------------
-motorcycle1 = (101, "Harley",   "Street Glide", 8, 21999)
-motorcycle2 = (102, "Yamaha",   "R1",           6, 17999)
-motorcycle3 = (103, "Honda",    "CBR600",      12, 11999)
-motorcycle4 = (104, "Kawasaki", "Ninja",        7, 16999)
-motorcycle5 = (105, "BMW",      "S1000RR",      4, 18999)
-motorcycle6 = (106, "Honda",    "Gold Wing",    3, 23999)
-motorcycle7 = (107, "Yamaha",   "MT-09",        5, 9999)
-
-
-----------------------------------------------------
-STEP 4: UPDATE HASHMAP BY ITEM ID
-----------------------------------------------------
-hashMap_inventory[101] = motorcycle1
-hashMap_inventory[102] = motorcycle2
-hashMap_inventory[103] = motorcycle3
-hashMap_inventory[104] = motorcycle4
-hashMap_inventory[105] = motorcycle5
-hashMap_inventory[106] = motorcycle6
-hashMap_inventory[107] = motorcycle7
-
-
-----------------------------------------------------
-STEP 5: INSERT ITEMS INTO BST (BY BRAND)
-----------------------------------------------------
-INSERT motorcycle1
-INSERT motorcycle2
-INSERT motorcycle3
-INSERT motorcycle4
-INSERT motorcycle5
-INSERT motorcycle6
-INSERT motorcycle7
-
-
-----------------------------------------------------
-STEP 6: USER MENU
-----------------------------------------------------
-DISPLAY "=== MOTORCYCLE INVENTORY MENU ==="
-DISPLAY "1. Search by ID"
-DISPLAY "2. View All Brands"
-DISPLAY "3. Generate Report"
-DISPLAY "4. Exit"
-
-GET user_choice
-
-
-----------------------------------------------------
-STEP 7: HANDLE USER SELECTION
-----------------------------------------------------
-IF user_choice = 1 THEN
-    GO TO Search_By_ID
-ELSE IF user_choice = 2 THEN
-    GO TO View_Brands
-ELSE IF user_choice = 3 THEN
-    GO TO Generate_Report
-ELSE
-    GO TO Save_And_Exit
-END IF
-
-
-----------------------------------------------------
-Search_By_ID:
-----------------------------------------------------
-PROMPT "Enter Motorcycle ID: "
-GET search_id
-
-IF hashMap_inventory CONTAINS search_id THEN
-    bike = hashMap_inventory[search_id]
-    DISPLAY bike details
-ELSE
-    DISPLAY "ID not found"
-END IF
-
-GO TO STEP 6
-
-
-----------------------------------------------------
-View_Brands:
-----------------------------------------------------
-CALL InOrder_Traversal(bst_inventory)
-GO TO STEP 6
-
-PROCEDURE InOrder_Traversal(node):
-    IF node = NULL THEN RETURN
-    InOrder_Traversal(node.left)
-    DISPLAY "Brand: " + node.brand
-    FOR EACH bike IN node.motorcycle_list:
-        DISPLAY " - " + bike.model + " (" + bike.quantity + " in stock)"
-    END FOR
-    InOrder_Traversal(node.right)
+// =====================================================================
+// QUEUE TRANSACTIONS FUNCTION
+// =====================================================================
+PROCEDURE Queue_Transaction(id, change):
+    CREATE new_trans AS Transaction
+    new_trans.id     = id
+    new_trans.change = change
+    ADD new_trans TO transaction_queue
+    PRINT "→ Queued: ID " + id + " change " + change
 END PROCEDURE
 
+// Add sample transactions
+PRINT ""
+PRINT "Adding transactions to queue..."
+Queue_Transaction(101, -2)   // Sell 2 Harleys
+Queue_Transaction(103, -1)   // Sell 1 Honda
+Queue_Transaction(105, +3)   // Restock 3 BMWs
+Queue_Transaction(106, -1)   // Sell 1 Gold Wing
 
-----------------------------------------------------
-Generate_Report:
-----------------------------------------------------
-DISPLAY "=== INVENTORY REPORT ==="
-DISPLAY "ID Brand Model Qty Price"
-DISPLAY "-------------------------------------"
+// =====================================================================
+// PROCESS ALL TRANSACTIONS
+// =====================================================================
+PRINT ""
+PRINT "Processing transactions..."
+PRINT "-------------------------"
+transaction_count = 0
 
-total_value = 0
-CALL Report_From_BST(bst_inventory, total_value)
+WHILE transaction_queue IS NOT EMPTY DO
+    current = REMOVE FIRST FROM transaction_queue
+    transaction_count = transaction_count + 1
+    
+    PRINT "Transaction " + transaction_count + ":"
+    
+    // Search using HashMap (O(1) lookup)
+    IF hashMap_inventory CONTAINS KEY current.id THEN
+        bike = hashMap_inventory[current.id]
+        old_qty = bike.quantity
+        
+        // Check if enough stock for sales
+        IF current.change < 0 AND bike.quantity < ABS(current.change) THEN
+            PRINT "  ✗ ERROR: Insufficient stock for " + bike.brand + " " + bike.model
+            PRINT "    Available: " + bike.quantity + ", Requested: " + ABS(current.change)
+            CONTINUE
+        END IF
+        
+        // Update quantity
+        bike.quantity = bike.quantity + current.change
+        hashMap_inventory[current.id] = bike
+        
+        // Create undo record
+        CREATE undo_rec AS UndoRecord
+        undo_rec.id          = current.id
+        undo_rec.undo_amount = -current.change
+        PUSH undo_rec TO undo_stack
+        
+        PRINT "  ✓ Updated: " + bike.brand + " " + bike.model
+        PRINT "    Stock: " + old_qty + " → " + bike.quantity
+    ELSE
+        PRINT "  ✗ ERROR: Motorcycle ID " + current.id + " not found"
+    END IF
+END WHILE
 
-DISPLAY "-------------------------------------"
-DISPLAY "Total Inventory Value: $" + total_value
+PRINT "-------------------------"
+PRINT "Processed " + transaction_count + " transactions"
 
-GO TO STEP 6
+// =====================================================================
+// BST IN-ORDER TRAVERSAL FUNCTION
+// =====================================================================
+PROCEDURE InOrder_Display(node):
+    IF node = NULL THEN
+        RETURN
+    END IF
+    
+    InOrder_Display(node.left)
+    
+    PRINT "Brand: " + node.brand
+    FOR EACH bike IN node.motorcycle_list DO
+        PRINT "  - " + bike.model + " (" + bike.quantity + " in stock, $" + bike.price + ")"
+    END FOR
+    
+    InOrder_Display(node.right)
+END PROCEDURE
 
-PROCEDURE Report_From_BST(node, total_value):
-    IF node = NULL THEN RETURN
-    Report_From_BST(node.left, total_value)
-    FOR EACH bike IN node.motorcycle_list:
-        DISPLAY bike details
+// =====================================================================
+// SEARCH BY ID FUNCTION  (Uses HashMap → O(1))
+// =====================================================================
+PROCEDURE Search_By_ID(search_id):
+    PRINT ""
+    PRINT "=== SEARCH RESULT (ID: " + search_id + ") ==="
+    
+    IF hashMap_inventory CONTAINS KEY search_id THEN
+        bike = hashMap_inventory[search_id]
+        PRINT "  ✓ FOUND:"
+        PRINT "    ID: "       + bike.id
+        PRINT "    Brand: "    + bike.brand
+        PRINT "    Model: "    + bike.model
+        PRINT "    Quantity: " + bike.quantity
+        PRINT "    Price: $"   + bike.price
+    ELSE
+        PRINT "  ✗ No motorcycle found with ID: " + search_id
+    END IF
+    PRINT "=================================="
+END PROCEDURE
+
+// =====================================================================
+// UNDO LAST TRANSACTION FUNCTION  (Uses Stack → LIFO)
+// =====================================================================
+PROCEDURE Undo_Last_Transaction():
+    PRINT ""
+    PRINT "=== UNDO OPERATION ==="
+    
+    IF undo_stack IS EMPTY THEN
+        PRINT "  No transactions to undo"
+        PRINT "========================"
+        RETURN
+    END IF
+    
+    last = POP undo_stack
+    
+    IF hashMap_inventory CONTAINS KEY last.id THEN
+        bike    = hashMap_inventory[last.id]
+        old_qty = bike.quantity
+        bike.quantity = bike.quantity + last.undo_amount
+        hashMap_inventory[last.id] = bike
+        
+        PRINT "  ✓ Undid last transaction for " + bike.brand + " " + bike.model
+        PRINT "    Stock: " + old_qty + " → " + bike.quantity
+    ELSE
+        PRINT "  ✗ Error: Motorcycle not found for undo"
+    END IF
+    PRINT "========================"
+END PROCEDURE
+
+// =====================================================================
+// GENERATE FULL REPORT FUNCTION  (Uses Merge Sort → sorted output)
+// =====================================================================
+PROCEDURE Generate_Report():
+    PRINT ""
+    PRINT "=========================================================="
+    PRINT "           MOTORCYCLE INVENTORY REPORT"
+    PRINT "    (Sorted by Brand & Model using Merge Sort)"
+    PRINT "=========================================================="
+    PRINT "ID   Brand       Model           Qty   Price"
+    PRINT "---- ----------- --------------- ----- -------"
+
+    // Step 1: Flatten all motorcycles from BST into a single flat list
+    CREATE flat_list AS empty LIST
+    Flatten_BST(bst_inventory, flat_list)
+
+    // Step 2: Sort the flat list using Merge Sort (by brand, then model)
+    sorted_list = Merge_Sort(flat_list)
+
+    // Step 3: Print sorted results and accumulate totals
+    total_value = 0
+    total_units = 0
+
+    FOR EACH bike IN sorted_list DO
+        PRINT FORMAT(bike.id, 4)       + " " +
+              PAD_RIGHT(bike.brand, 10) + " " +
+              PAD_RIGHT(bike.model, 13) + " " +
+              FORMAT(bike.quantity, 4)  + "  $" +
+              FORMAT(bike.price, "7,.0f")
+
         total_value = total_value + (bike.quantity * bike.price)
+        total_units = total_units + bike.quantity
     END FOR
-    Report_From_BST(node.right, total_value)
+
+    PRINT "=========================================================="
+    PRINT "SUMMARY:"
+    PRINT "  Total Units: "  + total_units
+    PRINT "  Total Value: $" + FORMAT(total_value, ",.0f")
+    PRINT "  Unique Brands: 5 (BMW, Harley, Honda, Kawasaki, Yamaha)"
+    PRINT "=========================================================="
 END PROCEDURE
 
+// =====================================================================
+// UPDATE BST AFTER MODIFICATIONS
+// =====================================================================
+PROCEDURE Rebuild_BST_From_HashMap():
+    PRINT ""
+    PRINT "Rebuilding BST with updated quantities..."
+    
+    bst_inventory = NULL
+    
+    FOR EACH key IN hashMap_inventory DO
+        bike = hashMap_inventory[key]
+        bst_inventory = Insert_Into_BST(bst_inventory, bike)
+    END FOR
+    
+    PRINT "✓ BST rebuilt with latest quantities"
+END PROCEDURE
 
-----------------------------------------------------
-Save_And_Exit:
-----------------------------------------------------
-OPEN "motorcycle_inventory.csv" FOR WRITING
-WRITE "ID,BRAND,MODEL,QUANTITY,PRICE"
+// =====================================================================
+// SAVE TO CSV FUNCTION
+// =====================================================================
+PROCEDURE Save_To_CSV():
+    PRINT ""
+    PRINT "Saving inventory to file..."
+    
+    OPEN FILE "motorcycle_inventory.csv" FOR WRITING
+    WRITE "ID,BRAND,MODEL,QUANTITY,PRICE" TO file
+    
+    FOR EACH key IN hashMap_inventory DO
+        bike = hashMap_inventory[key]
+        line = bike.id + "," + bike.brand + "," + bike.model + "," +
+               bike.quantity + "," + bike.price
+        WRITE line TO file
+    END FOR
+    
+    CLOSE FILE
+    PRINT "✓ Inventory saved to motorcycle_inventory.csv"
+    PRINT "  " + LENGTH(hashMap_inventory) + " records written"
+END PROCEDURE
 
-FOR EACH key IN hashMap_inventory:
-    WRITE motorcycle record
-END FOR
+// =====================================================================
+// LOAD FROM CSV FUNCTION
+// =====================================================================
+PROCEDURE Load_From_CSV():
+    IF FILE_EXISTS("motorcycle_inventory.csv") THEN
+        PRINT "Loading inventory from file..."
+        
+        OPEN FILE "motorcycle_inventory.csv" FOR READING
+        SKIP HEADER
+        
+        WHILE NOT END_OF_FILE DO
+            READ line FROM file
+            fields = SPLIT(line, ",")
+            
+            CREATE bike AS Motorcycle
+            bike.id       = TO_INTEGER(fields[0])
+            bike.brand    = fields[1]
+            bike.model    = fields[2]
+            bike.quantity = TO_INTEGER(fields[3])
+            bike.price    = TO_FLOAT(fields[4])
+            
+            hashMap_inventory[bike.id] = bike
+            bst_inventory = Insert_Into_BST(bst_inventory, bike)
+        END WHILE
+        
+        CLOSE FILE
+        PRINT "✓ Loaded " + LENGTH(hashMap_inventory) + " motorcycles from file"
+    ELSE
+        PRINT "No saved file found. Using sample data."
+    END IF
+END PROCEDURE
 
-CLOSE file
-DISPLAY "Inventory saved."
+// =====================================================================
+// USER MENU FUNCTION
+// =====================================================================
+PROCEDURE Show_Menu():
+    PRINT ""
+    PRINT "╔════════════════════════════════════╗"
+    PRINT "║     MOTORPH INVENTORY SYSTEM       ║"
+    PRINT "╠════════════════════════════════════╣"
+    PRINT "║ 1. Search by ID (HashMap)          ║"
+    PRINT "║ 2. View All Brands (BST In-Order)  ║"
+    PRINT "║ 3. Generate Full Report (MergeSort)║"
+    PRINT "║ 4. Undo Last Transaction           ║"
+    PRINT "║ 5. Rebuild BST from HashMap        ║"
+    PRINT "║ 6. Save to CSV                     ║"
+    PRINT "║ 7. Exit                            ║"
+    PRINT "╚════════════════════════════════════╝"
+    PRINT "Enter choice (1-7): "
+    
+    GET choice
+    
+    SWITCH choice:
+        CASE 1:
+            PRINT "Enter Motorcycle ID to search: "
+            GET search_id
+            Search_By_ID(search_id)
+            Show_Menu()
+            
+        CASE 2:
+            PRINT ""
+            PRINT "=== ALL BRANDS (Alphabetical via BST In-Order) ==="
+            InOrder_Display(bst_inventory)
+            PRINT "==================================================="
+            Show_Menu()
+            
+        CASE 3:
+            // Flowchart: Generate Report → Merge Sort → Display Output
+            Generate_Report()
+            Show_Menu()
+            
+        CASE 4:
+            Undo_Last_Transaction()
+            Show_Menu()
+            
+        CASE 5:
+            Rebuild_BST_From_HashMap()
+            Show_Menu()
+            
+        CASE 6:
+            Save_To_CSV()
+            Show_Menu()
+            
+        CASE 7:
+            PRINT "Saving before exit..."
+            Save_To_CSV()
+            PRINT "Goodbye!"
+            RETURN
+            
+        DEFAULT:
+            PRINT "Invalid choice. Please try again."
+            Show_Menu()
+    END SWITCH
+END PROCEDURE
 
+// =====================================================================
+// MAIN PROGRAM EXECUTION
+// =====================================================================
+PRINT "╔══════════════════════════════════════════╗"
+PRINT "║   MOTORPH INVENTORY SYSTEM               ║"
+PRINT "║   Data Structures: HashMap + BST         ║"
+PRINT "║   Sorting:         Merge Sort            ║"
+PRINT "║   Features:        Queue, Stack, CSV I/O ║"
+PRINT "╚══════════════════════════════════════════╝"
 
-----------------------------------------------------
-END PROGRAM
-----------------------------------------------------
+// Step 1: Load from file if it exists (flowchart: Load Product Inventory from CSV)
+Load_From_CSV()
+
+// Step 2: If no file, use sample data (flowchart: Add/Update Item)
+IF LENGTH(hashMap_inventory) = 0 THEN
+    // Sample data loading code (already handled above)
+END IF
+
+// Display initial state
+PRINT ""
+PRINT "Initial inventory loaded. Ready for operations."
+
+PRINT ""
+PRINT "=== DEMONSTRATION SUMMARY ==="
+PRINT "Initial transactions processed:"
+PRINT "  • Sold 2 Harleys (ID 101)"
+PRINT "  • Sold 1 Honda CBR600 (ID 103)"
+PRINT "  • Restocked 3 BMWs (ID 105)"
+PRINT "  • Sold 1 Gold Wing (ID 106)"
+PRINT "=============================="
+
+PRINT ""
+PRINT "Current BST Structure (Brands in tree form):"
+PRINT "  Root: Honda (contains 2 models)"
+PRINT "  ├── Left:  Harley (1 model)"
+PRINT "  │   └── Left: BMW (1 model)"
+PRINT "  └── Right: Kawasaki (1 model)"
+PRINT "      └── Right: Yamaha (2 models)"
+PRINT ""
+PRINT "Note: Generate Report flattens this BST, then"
+PRINT "      applies Merge Sort for final sorted output."
+PRINT ""
+
+// Step 3: Launch user menu (flowchart: User Query Menu)
+Show_Menu()
+
+// =====================================================================
+// PROGRAM END
+// =====================================================================
+PRINT ""
+PRINT "╔════════════════════════════════════╗"
+PRINT "║     SYSTEM SHUTDOWN COMPLETE       ║"
+PRINT "║     Thank you for using            ║"
+PRINT "║     Motorcycle Inventory System    ║"
+PRINT "╚════════════════════════════════════╝"
